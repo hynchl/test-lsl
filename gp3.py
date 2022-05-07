@@ -20,6 +20,7 @@ import re
 import pylsl as lsl
 import time
 import numpy as np
+import lxml.etree
 
 # Commands to send to the Open Gaze API
 requests = ['<SET ID="ENABLE_SEND_COUNTER" STATE="1"/>\r\n',
@@ -33,6 +34,7 @@ requests = ['<SET ID="ENABLE_SEND_COUNTER" STATE="1"/>\r\n',
             '<SET ID="ENABLE_SEND_PUPIL_RIGHT" STATE="1"/>\r\n',
             '<SET ID="ENABLE_SEND_CURSOR" STATE="1"/>\r\n',
             '<SET ID="ENABLE_SEND_BLINK" STATE="1"/>\r\n',
+            '<SET ID="ENABLE_SEND_USER_DATA" STATE="1"/>\r\n',
             '<SET ID="ENABLE_SEND_DATA" STATE="1"/>\r\n']
 
 
@@ -100,8 +102,8 @@ if __name__ == "__main__":
 
 
     # time
-    channels.append_child("channel").append_child_value("label", "CNT").append_child_value("unit", "integer").append_child_value("type", "gaze")
     channels.append_child("channel").append_child_value("label", "EPOCHTIME").append_child_value("unit", "seconds").append_child_value("type", "gaze")
+    channels.append_child("channel").append_child_value("label", "CNT").append_child_value("unit", "integer").append_child_value("type", "gaze")
     channels.append_child("channel").append_child_value("label", "TIME").append_child_value("unit", "seconds").append_child_value("type", "gaze")
     channels.append_child("channel").append_child_value("label", "TIMETICK").append_child_value("unit", "nanoseconds").append_child_value("type", "gaze")
     
@@ -146,67 +148,44 @@ if __name__ == "__main__":
     channels.append_child("channel").append_child_value("label", "CY").append_child_value("unit", "pixels").append_child_value("type", "gaze")
     channels.append_child("channel").append_child_value("label", "CS").append_child_value("unit", "integer").append_child_value("type", "gaze")
 
-    #etc
-    channels.append_child("channel").append_child_value("label", "USER").append_child_value("unit", "seconds").append_child_value("type", "gaze")
-    
+    #user
+    channels.append_child("channel").append_child_value("label", "USER").append_child_value("unit", "integer").append_child_value("type", "gaze")
+
+
 
     # Make an LSL outlet
     outlet_gaze = lsl.StreamOutlet(info_gaze)
 
     # Continuously stream data and push each data sample to the LSL
+    count = 0
     while True:
 
         # Reset data values to 0
-        rec = {
-        "CNT":np.nan,
-        "EPOCHTIME":time.time(),
-        "TIME":np.nan,
-        "TIME_TICK":np.nan,
-        "FPOGX":np.nan,
-        "FPOGY":np.nan,
-        "FPOGS":np.nan,
-        "FPOGD":np.nan,
-        "FPOGID":np.nan,
-        "FPOGV":np.nan,
-        "LPOGX":np.nan,
-        "LPOGY":np.nan,
-        "LPOGV":np.nan,
-        "RPOGX":np.nan,
-        "RPOGY":np.nan,
-        "RPOGV":np.nan,
-        "BPOGX":np.nan,
-        "BPOGY":np.nan,
-        "BPOGV":np.nan,
-        "LPCX":np.nan,
-        "LPCY":np.nan,
-        "LPD":np.nan,
-        "LPS":np.nan,
-        "LPV":np.nan,
-        "RPCX":np.nan,
-        "RPCY":np.nan,
-        "RPD":np.nan,
-        "RPS":np.nan,
-        "RPV":np.nan,
-        "BKID":np.nan,
-        "BKDUR":np.nan,
-        "BKPMIN":np.nan,
-        "CX":np.nan,
-        "CY":np.nan,
-        "CS":np.nan,
-        "USER":0}
+        t = time.time()
         
         # Read data
         msg = receive(s)
-        # Data looks like: '<FPOGX="0.26676" FPOGY="0.99285" ... FPOGV="1"/>\r\n'
+        # Data looks like: '<REC FPOGX="0.26676" FPOGY="0.99285" ... FPOGV="1"/>\r\n'
 
         # Parse data string to extract values
-        for key in list(rec.keys()):
-            if key == "EPOCHTIME": continue
-            extract_value(key, msg, rec)
+        e = lxml.etree.fromstring(msg)
+        if e.tag != 'REC' : 
+            print(msg)
+            continue
+
+        # print heading
+        heading = list(e.attrib.keys())
+        heading.insert(1, 'EPOCHTIME')
+        if count == 0:
+            print("Received Variable : ", heading)
 
         # Push data to LSL
-        samplegaze = rec.values()
+        samplegaze = [float(val) if val != '' else 0 for val in list(e.attrib.values())]
+        samplegaze.insert(1, t)
         outlet_gaze.push_sample(samplegaze)
+
+        count += 1
+        # if count >= 20: break
 
 
     s.close()

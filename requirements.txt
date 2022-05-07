@@ -2,3 +2,4 @@ pylsl
 pyxdf
 numpy
 matplotlib
+lxml
